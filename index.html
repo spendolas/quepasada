@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Glitch Effect Demo</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.175.0/build/three.module.js",
+    "three/": "https://cdn.jsdelivr.net/npm/three@0.175.0/build/",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.175.0/examples/jsm/",
+    "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.35.0/build/index.js"
+  }
+}
+</script>
+<script type="module">
+    // Paths & parameters
+    const svgPath = './qp.svg';
+    const glitchParams = {
+        minDelay: 2.5,
+        maxDelay: 5.5,
+        minDuration: 0.1,
+        maxDuration: 0.3,
+        minStrength: 0.3,
+        maxStrength: 1.0,
+        ratio: 0.85,
+        columns: 0.05
+    };
+    const chromaParams = {
+        offsetX: 0.055,
+        offsetY: 0.005
+    };
+    const blurParams = {
+        kernelSize: 80,      // odd number: size of the blur kernel
+        iterations: 2,       // how many blur passes to perform
+        resolutionScale: 0.1 // resolution scaling (1.0 = full size)
+    };
+
+    // Module imports
+    import * as THREE from 'three';
+    import { EffectComposer, RenderPass, EffectPass, GlitchEffect, ChromaticAberrationEffect, GaussianBlurPass } from 'postprocessing';
+    import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+
+    // Scene, camera, renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(
+      window.innerWidth / -2, window.innerWidth / 2,
+      window.innerHeight / 2, window.innerHeight / -2,
+      0.1, 1000
+    );
+    camera.position.z = 1;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // Load SVG as vector shapes
+    const svgLoader = new SVGLoader();
+    svgLoader.load(svgPath, (data) => {
+      const paths = data.paths;
+      const group = new THREE.Group();
+      for (const path of paths) {
+        const shapes = SVGLoader.createShapes(path);
+        for (const shape of shapes) {
+          const geometry = new THREE.ShapeGeometry(shape);
+          geometry.center();
+          const material = new THREE.MeshBasicMaterial({ color: path.color, side: THREE.DoubleSide });
+          const mesh = new THREE.Mesh(geometry, material);
+          group.add(mesh);
+        }
+      }
+      scene.add(group);
+    });
+
+    // Postprocessing setup
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const chromaEffect = new ChromaticAberrationEffect({
+        offset: new THREE.Vector2(chromaParams.offsetX, chromaParams.offsetY)
+    });
+    const chromaPass = new EffectPass(camera, chromaEffect);
+    chromaPass.enabled = false;
+    composer.addPass(chromaPass);
+    const blurPass = new GaussianBlurPass({
+        kernelSize: blurParams.kernelSize,
+        iterations: blurParams.iterations,
+        resolutionScale: blurParams.resolutionScale
+    });
+    blurPass.enabled = false;
+    composer.addPass(blurPass);
+    const glitchEffect = new GlitchEffect({
+        delay: new THREE.Vector2(glitchParams.minDelay, glitchParams.maxDelay),
+        duration: new THREE.Vector2(glitchParams.minDuration, glitchParams.maxDuration),
+        strength: new THREE.Vector2(glitchParams.minStrength, glitchParams.maxStrength),
+        ratio: glitchParams.ratio,
+        columns: glitchParams.columns
+    });
+    const glitchPass = new EffectPass(camera, glitchEffect);
+    composer.addPass(glitchPass);
+
+    // Responsive resize
+    window.addEventListener('resize', () => {
+        const { innerWidth: w, innerHeight: h } = window;
+        renderer.setSize(w, h);
+        composer.setSize(w, h);
+        camera.left = w / -2;
+        camera.right = w / 2;
+        camera.top = h / 2;
+        camera.bottom = h / -2;
+        camera.updateProjectionMatrix();
+    });
+
+    // Animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+        const isActive = glitchEffect.active;
+        chromaPass.enabled = isActive;
+        blurPass.enabled = isActive;
+        composer.render();
+    }
+    animate();
+</script>
+</body>
+</html>
